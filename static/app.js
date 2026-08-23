@@ -88,7 +88,7 @@ const manualApplyBtn = document.getElementById("manual-apply-btn");
 const chipList = document.getElementById("chip-list");
 const addChipBtn = document.getElementById("add-chip-btn");
 
-const firstChordLabel = document.getElementById("first-chord-label");
+const firstChordInput = document.getElementById("first-chord-input");
 const targetChordInput = document.getElementById("target-chord");
 const calcBtn = document.getElementById("calc-btn");
 const resultEl = document.getElementById("result");
@@ -119,20 +119,40 @@ function renderChips() {
     chipList.innerHTML = chords
       .map(
         (chord, i) => `
-        <div class="chip" data-id="${chord.id}">
-          <span class="chip-index">${i + 1}</span>
+        <div class="chip${i === 0 ? " first-chip" : ""}" data-id="${chord.id}">
+          <span class="chip-index">${i === 0 ? "★" : i + 1}</span>
           <input type="text" value="${chord.value.replace(/"/g, "&quot;")}" data-role="chip-input" />
           <button type="button" class="chip-del" data-role="chip-del" aria-label="코드 삭제">×</button>
         </div>`
       )
       .join("");
   }
-  updateFirstChordLabel();
+  updateFirstChordInput();
 }
 
-function updateFirstChordLabel() {
-  firstChordLabel.textContent = chords[0]?.value?.trim() || "—";
+// 첫 마디 코드 입력칸과 코드 목록의 첫 번째 칸은 항상 같은 값을 가리키도록 동기화한다.
+function updateFirstChordInput() {
+  if (document.activeElement === firstChordInput) return;
+  firstChordInput.value = chords[0]?.value ?? "";
 }
+
+function syncFirstChipInput(value) {
+  if (!chords.length) return;
+  const chipInput = chipList.querySelector(`.chip[data-id="${chords[0].id}"] input`);
+  if (chipInput) chipInput.value = value;
+}
+
+firstChordInput.addEventListener("input", () => {
+  const value = firstChordInput.value;
+  if (!chords.length) {
+    if (!value.trim()) return;
+    chords.push({ id: ++chipIdSeq, value });
+    renderChips();
+    return;
+  }
+  chords[0].value = value;
+  syncFirstChipInput(value);
+});
 
 function addChip(value = "") {
   chords.push({ id: ++chipIdSeq, value });
@@ -153,7 +173,7 @@ chipList.addEventListener("input", (event) => {
   const id = Number(input.closest(".chip").dataset.id);
   const chord = chords.find((c) => c.id === id);
   if (chord) chord.value = input.value;
-  if (chords[0]?.id === id) updateFirstChordLabel();
+  if (chords[0]?.id === id) updateFirstChordInput();
 });
 
 chipList.addEventListener("click", (event) => {
@@ -366,7 +386,11 @@ recognizeBtn.addEventListener("click", async () => {
         setOcrStatus("코드로 보이는 글자를 찾지 못했습니다. 목록에 직접 추가하거나 아래 직접 입력을 이용해 주세요.", true);
       } else {
         replaceChordsFromTokens(found);
-        setOcrStatus(`코드 ${found.length}개를 인식했습니다. 목록을 확인하고 필요하면 수정해 주세요.`);
+        setOcrStatus(
+          `코드 ${found.length}개를 인식했습니다. 특히 ★표시된 첫 번째 코드는 인식이 자주 틀리니 사진과 비교해 꼭 확인해 주세요.`
+        );
+        firstChordInput.focus();
+        firstChordInput.select();
       }
     } finally {
       await worker.terminate();

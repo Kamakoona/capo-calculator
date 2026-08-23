@@ -334,11 +334,23 @@ body {
   padding: 0.3rem 0.35rem 0.3rem 0.65rem;
 }
 
+.chip.first-chip {
+  border-color: var(--accent);
+  border-width: 2px;
+  background: rgba(255, 248, 236, 0.95);
+  box-shadow: 0 0 0 3px rgba(196, 92, 38, 0.1);
+}
+
 .chip .chip-index {
   font-size: 0.72rem;
   color: var(--muted);
   min-width: 1.1rem;
   text-align: right;
+}
+
+.chip.first-chip .chip-index {
+  color: var(--accent-deep);
+  font-weight: 700;
 }
 
 .chip input {
@@ -383,9 +395,24 @@ body {
   gap: 0.3rem;
 }
 
-.first-chord-display strong {
+.first-chord-input {
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+  font: inherit;
   font-family: var(--font-serif);
   font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: rgba(255, 248, 236, 0.9);
+  outline: none;
+  width: 9rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.first-chord-input:focus {
+  border-color: var(--accent-deep);
+  box-shadow: 0 0 0 3px rgba(196, 92, 38, 0.18);
 }
 
 .arrow {

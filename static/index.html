@@ -79,7 +79,10 @@
               <button type="button" id="add-chip-btn" class="secondary-btn small">+ 코드 추가</button>
             </div>
             <div id="chip-list" class="chip-list"></div>
-            <p class="hint">칸을 클릭해 코드를 고치거나, × 로 지울 수 있습니다. 순서가 곧 연주 순서입니다.</p>
+            <p class="hint">
+              칸을 클릭해 코드를 고치거나, × 로 지울 수 있습니다. 순서가 곧 연주 순서입니다.
+              <strong>첫 번째 칸(★)은 카포 계산의 기준이 되므로 사진과 비교해 꼭 정확한지 확인해 주세요.</strong>
+            </p>
           </div>
         </div>
 
@@ -88,8 +91,8 @@
             <span class="label">3. 첫 마디를 이렇게 연주하고 싶어요</span>
             <div class="capo-form-row">
               <div class="first-chord-display">
-                <span class="hint">원곡 첫 마디 코드</span>
-                <strong id="first-chord-label">—</strong>
+                <span class="hint">원곡 첫 마디 코드 (가장 중요! 꼭 확인하세요)</span>
+                <input id="first-chord-input" type="text" class="first-chord-input" placeholder="예: E" autocomplete="off" />
               </div>
               <span class="arrow" aria-hidden="true">→</span>
               <div class="target-chord-field">
