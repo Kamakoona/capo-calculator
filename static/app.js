@@ -224,14 +224,23 @@ function chordCandidates(token) {
   return candidates;
 }
 
+// 두 인식 결과가 같은 위치를 가리키는지 비교할 때 쓰는 정규화된 키.
+// "Fim/A"와 "F#m/A"처럼 표기는 다르지만 같은 코드를 가리키는 경우를 같은 것으로 취급한다.
+function canonicalChordToken(rawText) {
+  const token = cleanToken(rawText);
+  for (const candidate of chordCandidates(token)) {
+    if (parseChord(candidate)) return candidate;
+  }
+  return token;
+}
+
 // 근음 하나짜리 단순 코드(A, C, G...)는 A~G 알파벳 한 글자만 맞으면 통과되므로,
 // 한글 글자나 음표 기둥을 잘못 읽어도 우연히 걸리기 쉽다. 이런 경우만 높은 신뢰도를
 // 요구한다. 코드 성질·베이스가 붙은 복합 표기(F#m, B7, E/G# 등)는 우리 문법과 우연히
 // 맞아떨어질 확률이 낮아 그 자체가 이미 좋은 필터라, 신뢰도가 낮아도 받아들인다.
 const MIN_BARE_ROOT_CONFIDENCE = 70;
 
-function extractChordsFromOcr(data) {
-  const words = data?.words || [];
+function extractChordsFromWords(words) {
   const rows = groupWordsIntoRows(words);
   const found = [];
   for (const row of rows) {
@@ -255,14 +264,44 @@ function extractChordsFromOcr(data) {
   return found;
 }
 
-function formatOcrDebugText(data) {
-  const words = data?.words || [];
+function formatOcrDebugText(words) {
   const rows = groupWordsIntoRows(words);
   const lines = [];
   for (const row of rows) {
     lines.push(row.words.map((w) => `"${w.text}"(${Math.round(w.confidence ?? 0)}%)`).join("  "));
   }
   return lines.join("\n");
+}
+
+function bboxOverlapRatio(a, b) {
+  const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const overlapY = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (overlapX <= 0 || overlapY <= 0) return 0;
+  const areaA = (a.x1 - a.x0) * (a.y1 - a.y0);
+  const areaB = (b.x1 - b.x0) * (b.y1 - b.y0);
+  return (overlapX * overlapY) / Math.max(1, Math.min(areaA, areaB));
+}
+
+// 서로 다른 페이지 분석 모드(PSM)로 같은 이미지를 두 번 인식하면, 한쪽이 놓친 글자를
+// 다른 쪽이 잡아내는 경우가 많다. 같은 위치를 가리키는 결과는 하나로 합친다.
+function mergeOcrWordPasses(wordLists) {
+  const merged = [];
+  for (const words of wordLists) {
+    for (const word of words) {
+      const dup = merged.find(
+        (w) => canonicalChordToken(w.text) === canonicalChordToken(word.text) && bboxOverlapRatio(w.bbox, word.bbox) > 0.4
+      );
+      if (dup) {
+        if ((word.confidence ?? 0) > (dup.confidence ?? 0)) {
+          dup.text = word.text;
+          dup.confidence = word.confidence;
+        }
+        continue;
+      }
+      merged.push(word);
+    }
+  }
+  return merged;
 }
 
 // 오선보 위의 작은 코드 글자는 실제 픽셀 크기가 매우 작은 경우가 많아
@@ -303,14 +342,24 @@ recognizeBtn.addEventListener("click", async () => {
       },
     });
     try {
-      // 오선보처럼 그림 위에 흩어진 짧은 글자는 일반 문서용 페이지 분석(PSM)에서
-      // 노이즈로 무시되기 쉬워, "흩어진 텍스트" 모드(11)로 전환한다.
-      await worker.setParameters({ tessedit_pageseg_mode: "11" });
       const prepared = await upscaleForOcr(selectedImageFile);
-      const { data } = await worker.recognize(prepared);
-      const found = extractChordsFromOcr(data);
+
+      // 페이지 분석 모드(PSM)에 따라 잘 잡히는 글자가 다르다 — 오선보 위에 흩어진
+      // 짧은 글자는 "흩어진 텍스트" 모드(11)가 유리하고, 음자리표 옆처럼 다른 그림과
+      // 붙어 있는 글자는 오히려 기본 모드(3)가 더 잘 잡는 경우가 있다. 같은 이미지를
+      // 두 모드로 각각 인식해서 결과를 합친다.
+      setOcrStatus("코드 인식 중… (1/2)");
+      await worker.setParameters({ tessedit_pageseg_mode: "11" });
+      const sparsePass = await worker.recognize(prepared);
+
+      setOcrStatus("코드 인식 중… (2/2)");
+      await worker.setParameters({ tessedit_pageseg_mode: "3" });
+      const defaultPass = await worker.recognize(prepared);
+
+      const mergedWords = mergeOcrWordPasses([sparsePass.data?.words || [], defaultPass.data?.words || []]);
+      const found = extractChordsFromWords(mergedWords);
       if (ocrDebug) {
-        ocrDebugText.textContent = formatOcrDebugText(data) || "(인식된 글자가 없습니다)";
+        ocrDebugText.textContent = formatOcrDebugText(mergedWords) || "(인식된 글자가 없습니다)";
         ocrDebug.hidden = false;
       }
       if (!found.length) {
