@@ -275,6 +275,29 @@ body {
   color: #7a1f1f;
 }
 
+.ocr-debug {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.ocr-debug summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ocr-debug pre {
+  margin: 0.5rem 0 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(26, 35, 48, 0.05);
+  border: 1px solid rgba(26, 35, 48, 0.08);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
 /* ---- 코드 칩 목록 ---- */
 
 .chip-list-head {

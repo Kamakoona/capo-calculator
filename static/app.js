@@ -79,6 +79,8 @@ const recognizeBtn = document.getElementById("recognize-btn");
 const imageHint = document.getElementById("image-hint");
 const imagePreview = document.getElementById("image-preview");
 const ocrStatus = document.getElementById("ocr-status");
+const ocrDebug = document.getElementById("ocr-debug");
+const ocrDebugText = document.getElementById("ocr-debug-text");
 
 const manualInput = document.getElementById("manual-input");
 const manualApplyBtn = document.getElementById("manual-apply-btn");
@@ -214,12 +216,17 @@ function cleanToken(raw) {
   return String(raw || "").trim().replace(/[^0-9A-Za-z#♯b♭/+°ø]/g, "");
 }
 
+const MIN_WORD_CONFIDENCE = 55;
+
 function extractChordsFromOcr(data) {
   const words = data?.words || [];
   const rows = groupWordsIntoRows(words);
   const found = [];
   for (const row of rows) {
     for (const word of row.words) {
+      // "흩어진 텍스트" 모드는 음표 기둥 같은 그래픽 요소까지 글자로 잘못 읽는 경우가
+      // 많아, 신뢰도가 낮은 결과는 걸러낸다.
+      if ((word.confidence ?? 0) < MIN_WORD_CONFIDENCE) continue;
       const token = cleanToken(word.text);
       if (!token) continue;
       if (parseChord(token)) found.push(token);
@@ -228,9 +235,19 @@ function extractChordsFromOcr(data) {
   return found;
 }
 
+function formatOcrDebugText(data) {
+  const words = data?.words || [];
+  const rows = groupWordsIntoRows(words);
+  const lines = [];
+  for (const row of rows) {
+    lines.push(row.words.map((w) => `"${w.text}"(${Math.round(w.confidence ?? 0)}%)`).join("  "));
+  }
+  return lines.join("\n");
+}
+
 // 오선보 위의 작은 코드 글자는 실제 픽셀 크기가 매우 작은 경우가 많아
 // 인식 전에 확대하면 정확도가 크게 올라간다.
-async function upscaleForOcr(file, minLongSide = 1800) {
+async function upscaleForOcr(file, minLongSide = 2400) {
   const bitmap = await createImageBitmap(file);
   const longSide = Math.max(bitmap.width, bitmap.height);
   const scale = Math.max(1, minLongSide / longSide);
@@ -272,6 +289,10 @@ recognizeBtn.addEventListener("click", async () => {
       const prepared = await upscaleForOcr(selectedImageFile);
       const { data } = await worker.recognize(prepared);
       const found = extractChordsFromOcr(data);
+      if (ocrDebug) {
+        ocrDebugText.textContent = formatOcrDebugText(data) || "(인식된 글자가 없습니다)";
+        ocrDebug.hidden = false;
+      }
       if (!found.length) {
         setOcrStatus("코드로 보이는 글자를 찾지 못했습니다. 목록에 직접 추가하거나 아래 직접 입력을 이용해 주세요.", true);
       } else {
