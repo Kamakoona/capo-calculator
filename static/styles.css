@@ -364,6 +364,32 @@ body {
   text-align: center;
 }
 
+.chip-move {
+  display: flex;
+  gap: 0.1rem;
+}
+
+.chip-move-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.15rem 0.25rem;
+  border-radius: 6px;
+}
+
+.chip-move-btn:hover:not(:disabled) {
+  color: #2a547a;
+  background: rgba(42, 84, 122, 0.08);
+}
+
+.chip-move-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .chip-del {
   border: 0;
   background: transparent;

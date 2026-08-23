@@ -116,18 +116,31 @@ function renderChips() {
   if (!chords.length) {
     chipList.innerHTML = `<div class="chip-list-empty">아직 코드가 없습니다. 이미지를 인식하거나 직접 입력해 주세요.</div>`;
   } else {
+    const last = chords.length - 1;
     chipList.innerHTML = chords
       .map(
         (chord, i) => `
         <div class="chip${i === 0 ? " first-chip" : ""}" data-id="${chord.id}">
           <span class="chip-index">${i === 0 ? "★" : i + 1}</span>
           <input type="text" value="${chord.value.replace(/"/g, "&quot;")}" data-role="chip-input" />
+          <div class="chip-move">
+            <button type="button" class="chip-move-btn" data-role="chip-move-left" aria-label="앞으로 이동" ${i === 0 ? "disabled" : ""}>‹</button>
+            <button type="button" class="chip-move-btn" data-role="chip-move-right" aria-label="뒤로 이동" ${i === last ? "disabled" : ""}>›</button>
+          </div>
           <button type="button" class="chip-del" data-role="chip-del" aria-label="코드 삭제">×</button>
         </div>`
       )
       .join("");
   }
   updateFirstChordInput();
+}
+
+function moveChip(id, offset) {
+  const index = chords.findIndex((c) => c.id === id);
+  const target = index + offset;
+  if (index < 0 || target < 0 || target >= chords.length) return;
+  [chords[index], chords[target]] = [chords[target], chords[index]];
+  renderChips();
 }
 
 // 첫 마디 코드 입력칸과 코드 목록의 첫 번째 칸은 항상 같은 값을 가리키도록 동기화한다.
@@ -178,10 +191,21 @@ chipList.addEventListener("input", (event) => {
 
 chipList.addEventListener("click", (event) => {
   const del = event.target.closest('[data-role="chip-del"]');
-  if (!del) return;
-  const id = Number(del.closest(".chip").dataset.id);
-  chords = chords.filter((c) => c.id !== id);
-  renderChips();
+  if (del) {
+    const id = Number(del.closest(".chip").dataset.id);
+    chords = chords.filter((c) => c.id !== id);
+    renderChips();
+    return;
+  }
+  const moveLeft = event.target.closest('[data-role="chip-move-left"]');
+  if (moveLeft) {
+    moveChip(Number(moveLeft.closest(".chip").dataset.id), -1);
+    return;
+  }
+  const moveRight = event.target.closest('[data-role="chip-move-right"]');
+  if (moveRight) {
+    moveChip(Number(moveRight.closest(".chip").dataset.id), 1);
+  }
 });
 
 addChipBtn.addEventListener("click", () => addChip(""));
