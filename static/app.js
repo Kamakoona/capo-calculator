@@ -216,7 +216,19 @@ function cleanToken(raw) {
   return String(raw || "").trim().replace(/[^0-9A-Za-z#♯b♭/+°ø]/g, "");
 }
 
-const MIN_WORD_CONFIDENCE = 55;
+// 이 해상도·글꼴에서는 샤프(#) 기호가 소문자 "i"로 잘못 읽히는 경우가 매우 흔하다
+// (예: "F#m" -> "Fim"). 근음 바로 뒤에 오는 "i"를 "#"으로 바꿔서도 시도해 본다.
+function chordCandidates(token) {
+  const candidates = [token];
+  if (/^[A-G]i/.test(token)) candidates.push(token.replace(/^([A-G])i/, "$1#"));
+  return candidates;
+}
+
+// 근음 하나짜리 단순 코드(A, C, G...)는 A~G 알파벳 한 글자만 맞으면 통과되므로,
+// 한글 글자나 음표 기둥을 잘못 읽어도 우연히 걸리기 쉽다. 이런 경우만 높은 신뢰도를
+// 요구한다. 코드 성질·베이스가 붙은 복합 표기(F#m, B7, E/G# 등)는 우리 문법과 우연히
+// 맞아떨어질 확률이 낮아 그 자체가 이미 좋은 필터라, 신뢰도가 낮아도 받아들인다.
+const MIN_BARE_ROOT_CONFIDENCE = 70;
 
 function extractChordsFromOcr(data) {
   const words = data?.words || [];
@@ -224,12 +236,20 @@ function extractChordsFromOcr(data) {
   const found = [];
   for (const row of rows) {
     for (const word of row.words) {
-      // "흩어진 텍스트" 모드는 음표 기둥 같은 그래픽 요소까지 글자로 잘못 읽는 경우가
-      // 많아, 신뢰도가 낮은 결과는 걸러낸다.
-      if ((word.confidence ?? 0) < MIN_WORD_CONFIDENCE) continue;
       const token = cleanToken(word.text);
       if (!token) continue;
-      if (parseChord(token)) found.push(token);
+      let match = null;
+      for (const candidate of chordCandidates(token)) {
+        const parsed = parseChord(candidate);
+        if (parsed) {
+          match = { candidate, parsed };
+          break;
+        }
+      }
+      if (!match) continue;
+      const isBareRoot = !match.parsed.quality && !match.parsed.bass;
+      if (isBareRoot && (word.confidence ?? 0) < MIN_BARE_ROOT_CONFIDENCE) continue;
+      found.push(match.candidate);
     }
   }
   return found;
