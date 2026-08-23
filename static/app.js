@@ -228,6 +228,23 @@ function extractChordsFromOcr(data) {
   return found;
 }
 
+// 오선보 위의 작은 코드 글자는 실제 픽셀 크기가 매우 작은 경우가 많아
+// 인식 전에 확대하면 정확도가 크게 올라간다.
+async function upscaleForOcr(file, minLongSide = 1800) {
+  const bitmap = await createImageBitmap(file);
+  const longSide = Math.max(bitmap.width, bitmap.height);
+  const scale = Math.max(1, minLongSide / longSide);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  return canvas;
+}
+
 recognizeBtn.addEventListener("click", async () => {
   if (!selectedImageFile) return;
   if (!window.Tesseract) {
@@ -249,7 +266,11 @@ recognizeBtn.addEventListener("click", async () => {
       },
     });
     try {
-      const { data } = await worker.recognize(selectedImageFile);
+      // 오선보처럼 그림 위에 흩어진 짧은 글자는 일반 문서용 페이지 분석(PSM)에서
+      // 노이즈로 무시되기 쉬워, "흩어진 텍스트" 모드(11)로 전환한다.
+      await worker.setParameters({ tessedit_pageseg_mode: "11" });
+      const prepared = await upscaleForOcr(selectedImageFile);
+      const { data } = await worker.recognize(prepared);
       const found = extractChordsFromOcr(data);
       if (!found.length) {
         setOcrStatus("코드로 보이는 글자를 찾지 못했습니다. 목록에 직접 추가하거나 아래 직접 입력을 이용해 주세요.", true);
