@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>카포 계산기 · 코드 변환</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <header class="top">
+      <div class="brand">
+        <span class="brand-glyph" aria-hidden="true"></span>
+        <div>
+          <p class="brand-kicker">Guitar Capo Calculator</p>
+          <h1 class="brand-title">카포 계산기</h1>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="intro">
+        <p class="lead">
+          악보(코드보) 사진을 올리면 브라우저에서 코드를 자동으로 인식합니다.
+          첫 마디 코드를 원하는 다른 코드 모양으로 지정하면, 같은 음이 나도록
+          카포 위치를 계산하고 이어지는 코드도 함께 바꿔 드립니다.
+          이미지는 서버로 업로드되지 않고 브라우저 안에서만 처리됩니다.
+        </p>
+
+        <div class="panel">
+          <div class="field">
+            <span class="label">1. 악보 사진 업로드 (PNG / JPG)</span>
+            <div class="upload-row">
+              <input id="image-input" type="file" accept="image/png,image/jpeg" />
+              <button type="button" id="recognize-btn" class="secondary-btn" disabled>코드 인식</button>
+            </div>
+            <p class="hint" id="image-hint">
+              사진 속 코드 글자(C, Am7, G/B 같은 표기)를 인식해 아래 목록에 순서대로 채워 넣습니다.
+              손글씨나 복잡한 배치는 인식이 정확하지 않을 수 있어 아래에서 직접 수정할 수 있습니다.
+            </p>
+            <img id="image-preview" alt="업로드한 악보 미리보기" hidden />
+            <div id="ocr-status" class="ocr-status" hidden></div>
+          </div>
+
+          <div class="field">
+            <span class="label">또는 코드를 직접 입력</span>
+            <textarea
+              id="manual-input"
+              rows="2"
+              placeholder="예: D  G  A  Bm   D  G  A7  D  (공백·쉼표·줄바꿈으로 구분, 순서대로)"
+            ></textarea>
+            <div class="manual-row">
+              <button type="button" id="manual-apply-btn" class="secondary-btn">이 목록으로 바꾸기</button>
+              <span class="hint">기존에 인식된 코드 목록을 통째로 대체합니다.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="field">
+            <div class="chip-list-head">
+              <span class="label">2. 코드 순서 확인 · 수정</span>
+              <button type="button" id="add-chip-btn" class="secondary-btn small">+ 코드 추가</button>
+            </div>
+            <div id="chip-list" class="chip-list"></div>
+            <p class="hint">칸을 클릭해 코드를 고치거나, × 로 지울 수 있습니다. 순서가 곧 연주 순서입니다.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="field">
+            <span class="label">3. 첫 마디를 이렇게 연주하고 싶어요</span>
+            <div class="capo-form-row">
+              <div class="first-chord-display">
+                <span class="hint">원곡 첫 마디 코드</span>
+                <strong id="first-chord-label">—</strong>
+              </div>
+              <span class="arrow" aria-hidden="true">→</span>
+              <div class="target-chord-field">
+                <span class="hint">이 모양(코드)으로 연주</span>
+                <input
+                  id="target-chord"
+                  list="chord-suggestions"
+                  type="text"
+                  placeholder="예: C, Am, G7"
+                  autocomplete="off"
+                />
+                <datalist id="chord-suggestions">
+                  <option value="C"></option>
+                  <option value="D"></option>
+                  <option value="E"></option>
+                  <option value="G"></option>
+                  <option value="A"></option>
+                  <option value="Am"></option>
+                  <option value="Em"></option>
+                  <option value="Dm"></option>
+                  <option value="C7"></option>
+                  <option value="D7"></option>
+                  <option value="E7"></option>
+                  <option value="A7"></option>
+                  <option value="G7"></option>
+                </datalist>
+              </div>
+              <button type="button" id="calc-btn" class="primary-btn">카포 계산</button>
+            </div>
+          </div>
+        </div>
+
+        <section id="result" class="panel result" hidden></section>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        업로드한 이미지와 코드 인식(OCR)은 모두 브라우저 안에서 처리되며 서버로 전송되지 않습니다.
+        코드 인식 결과는 참고용이며, 실제 악보와 다를 경우 목록에서 직접 수정해 주세요.
+      </p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
