@@ -77,7 +77,9 @@ function calcCapoFret(originalRootSemitone, targetRootSemitone) {
 const imageInput = document.getElementById("image-input");
 const recognizeBtn = document.getElementById("recognize-btn");
 const imageHint = document.getElementById("image-hint");
+const imagePreviewRow = document.getElementById("image-preview-row");
 const imagePreview = document.getElementById("image-preview");
+const viewLargeBtn = document.getElementById("view-large-btn");
 const ocrStatus = document.getElementById("ocr-status");
 
 const manualInput = document.getElementById("manual-input");
@@ -178,7 +180,7 @@ manualApplyBtn.addEventListener("click", () => {
 // ---- 이미지 업로드 & OCR ----------------------------------------------------
 
 function openImagePreviewWindow() {
-  if (!imagePreview.src || imagePreview.hidden) return;
+  if (!imagePreview.src || imagePreviewRow.hidden) return;
   window.open(imagePreview.src, "_blank", "noopener");
 }
 
@@ -189,6 +191,7 @@ imagePreview.addEventListener("keydown", (event) => {
     openImagePreviewWindow();
   }
 });
+viewLargeBtn.addEventListener("click", openImagePreviewWindow);
 
 imageInput.addEventListener("change", () => {
   const file = imageInput.files?.[0] || null;
@@ -197,9 +200,9 @@ imageInput.addEventListener("change", () => {
   setOcrStatus("");
   if (file) {
     imagePreview.src = URL.createObjectURL(file);
-    imagePreview.hidden = false;
+    imagePreviewRow.hidden = false;
   } else {
-    imagePreview.hidden = true;
+    imagePreviewRow.hidden = true;
   }
 });
 
