@@ -177,6 +177,19 @@ manualApplyBtn.addEventListener("click", () => {
 
 // ---- 이미지 업로드 & OCR ----------------------------------------------------
 
+function openImagePreviewWindow() {
+  if (!imagePreview.src || imagePreview.hidden) return;
+  window.open(imagePreview.src, "_blank", "noopener");
+}
+
+imagePreview.addEventListener("click", openImagePreviewWindow);
+imagePreview.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openImagePreviewWindow();
+  }
+});
+
 imageInput.addEventListener("change", () => {
   const file = imageInput.files?.[0] || null;
   selectedImageFile = file;
