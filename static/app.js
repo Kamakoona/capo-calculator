@@ -81,6 +81,8 @@ const imagePreviewRow = document.getElementById("image-preview-row");
 const imagePreview = document.getElementById("image-preview");
 const viewLargeBtn = document.getElementById("view-large-btn");
 const ocrStatus = document.getElementById("ocr-status");
+const ocrDebug = document.getElementById("ocr-debug");
+const ocrDebugText = document.getElementById("ocr-debug-text");
 
 const manualInput = document.getElementById("manual-input");
 const manualApplyBtn = document.getElementById("manual-apply-btn");
@@ -88,7 +90,7 @@ const manualApplyBtn = document.getElementById("manual-apply-btn");
 const chipList = document.getElementById("chip-list");
 const addChipBtn = document.getElementById("add-chip-btn");
 
-const firstChordLabel = document.getElementById("first-chord-label");
+const firstChordInput = document.getElementById("first-chord-input");
 const targetChordInput = document.getElementById("target-chord");
 const calcBtn = document.getElementById("calc-btn");
 const resultEl = document.getElementById("result");
@@ -116,23 +118,56 @@ function renderChips() {
   if (!chords.length) {
     chipList.innerHTML = `<div class="chip-list-empty">아직 코드가 없습니다. 이미지를 인식하거나 직접 입력해 주세요.</div>`;
   } else {
+    const last = chords.length - 1;
     chipList.innerHTML = chords
       .map(
         (chord, i) => `
-        <div class="chip" data-id="${chord.id}">
-          <span class="chip-index">${i + 1}</span>
+        <div class="chip${i === 0 ? " first-chip" : ""}" data-id="${chord.id}">
+          <span class="chip-index">${i === 0 ? "★" : i + 1}</span>
           <input type="text" value="${chord.value.replace(/"/g, "&quot;")}" data-role="chip-input" />
+          <div class="chip-move">
+            <button type="button" class="chip-move-btn" data-role="chip-move-left" aria-label="앞으로 이동" ${i === 0 ? "disabled" : ""}>‹</button>
+            <button type="button" class="chip-move-btn" data-role="chip-move-right" aria-label="뒤로 이동" ${i === last ? "disabled" : ""}>›</button>
+          </div>
           <button type="button" class="chip-del" data-role="chip-del" aria-label="코드 삭제">×</button>
         </div>`
       )
       .join("");
   }
-  updateFirstChordLabel();
+  updateFirstChordInput();
 }
 
-function updateFirstChordLabel() {
-  firstChordLabel.textContent = chords[0]?.value?.trim() || "—";
+function moveChip(id, offset) {
+  const index = chords.findIndex((c) => c.id === id);
+  const target = index + offset;
+  if (index < 0 || target < 0 || target >= chords.length) return;
+  [chords[index], chords[target]] = [chords[target], chords[index]];
+  renderChips();
 }
+
+// 첫 마디 코드 입력칸과 코드 목록의 첫 번째 칸은 항상 같은 값을 가리키도록 동기화한다.
+function updateFirstChordInput() {
+  if (document.activeElement === firstChordInput) return;
+  firstChordInput.value = chords[0]?.value ?? "";
+}
+
+function syncFirstChipInput(value) {
+  if (!chords.length) return;
+  const chipInput = chipList.querySelector(`.chip[data-id="${chords[0].id}"] input`);
+  if (chipInput) chipInput.value = value;
+}
+
+firstChordInput.addEventListener("input", () => {
+  const value = firstChordInput.value;
+  if (!chords.length) {
+    if (!value.trim()) return;
+    chords.push({ id: ++chipIdSeq, value });
+    renderChips();
+    return;
+  }
+  chords[0].value = value;
+  syncFirstChipInput(value);
+});
 
 function addChip(value = "") {
   chords.push({ id: ++chipIdSeq, value });
@@ -153,15 +188,26 @@ chipList.addEventListener("input", (event) => {
   const id = Number(input.closest(".chip").dataset.id);
   const chord = chords.find((c) => c.id === id);
   if (chord) chord.value = input.value;
-  if (chords[0]?.id === id) updateFirstChordLabel();
+  if (chords[0]?.id === id) updateFirstChordInput();
 });
 
 chipList.addEventListener("click", (event) => {
   const del = event.target.closest('[data-role="chip-del"]');
-  if (!del) return;
-  const id = Number(del.closest(".chip").dataset.id);
-  chords = chords.filter((c) => c.id !== id);
-  renderChips();
+  if (del) {
+    const id = Number(del.closest(".chip").dataset.id);
+    chords = chords.filter((c) => c.id !== id);
+    renderChips();
+    return;
+  }
+  const moveLeft = event.target.closest('[data-role="chip-move-left"]');
+  if (moveLeft) {
+    moveChip(Number(moveLeft.closest(".chip").dataset.id), -1);
+    return;
+  }
+  const moveRight = event.target.closest('[data-role="chip-move-right"]');
+  if (moveRight) {
+    moveChip(Number(moveRight.closest(".chip").dataset.id), 1);
+  }
 });
 
 addChipBtn.addEventListener("click", () => addChip(""));
@@ -230,18 +276,109 @@ function cleanToken(raw) {
   return String(raw || "").trim().replace(/[^0-9A-Za-z#♯b♭/+°ø]/g, "");
 }
 
-function extractChordsFromOcr(data) {
-  const words = data?.words || [];
+// 이 해상도·글꼴에서는 샤프(#) 기호가 소문자 "i"로 잘못 읽히는 경우가 매우 흔하다
+// (예: "F#m" -> "Fim"). 근음 바로 뒤에 오는 "i"를 "#"으로 바꿔서도 시도해 본다.
+function chordCandidates(token) {
+  const candidates = [token];
+  if (/^[A-G]i/.test(token)) candidates.push(token.replace(/^([A-G])i/, "$1#"));
+  return candidates;
+}
+
+// 두 인식 결과가 같은 위치를 가리키는지 비교할 때 쓰는 정규화된 키.
+// "Fim/A"와 "F#m/A"처럼 표기는 다르지만 같은 코드를 가리키는 경우를 같은 것으로 취급한다.
+function canonicalChordToken(rawText) {
+  const token = cleanToken(rawText);
+  for (const candidate of chordCandidates(token)) {
+    if (parseChord(candidate)) return candidate;
+  }
+  return token;
+}
+
+// 근음 하나짜리 단순 코드(A, C, G...)는 A~G 알파벳 한 글자만 맞으면 통과되므로,
+// 한글 글자나 음표 기둥을 잘못 읽어도 우연히 걸리기 쉽다. 이런 경우만 높은 신뢰도를
+// 요구한다. 코드 성질·베이스가 붙은 복합 표기(F#m, B7, E/G# 등)는 우리 문법과 우연히
+// 맞아떨어질 확률이 낮아 그 자체가 이미 좋은 필터라, 신뢰도가 낮아도 받아들인다.
+const MIN_BARE_ROOT_CONFIDENCE = 70;
+
+function extractChordsFromWords(words) {
   const rows = groupWordsIntoRows(words);
   const found = [];
   for (const row of rows) {
     for (const word of row.words) {
       const token = cleanToken(word.text);
       if (!token) continue;
-      if (parseChord(token)) found.push(token);
+      let match = null;
+      for (const candidate of chordCandidates(token)) {
+        const parsed = parseChord(candidate);
+        if (parsed) {
+          match = { candidate, parsed };
+          break;
+        }
+      }
+      if (!match) continue;
+      const isBareRoot = !match.parsed.quality && !match.parsed.bass;
+      if (isBareRoot && (word.confidence ?? 0) < MIN_BARE_ROOT_CONFIDENCE) continue;
+      found.push(match.candidate);
     }
   }
   return found;
+}
+
+function formatOcrDebugText(words) {
+  const rows = groupWordsIntoRows(words);
+  const lines = [];
+  for (const row of rows) {
+    lines.push(row.words.map((w) => `"${w.text}"(${Math.round(w.confidence ?? 0)}%)`).join("  "));
+  }
+  return lines.join("\n");
+}
+
+function bboxOverlapRatio(a, b) {
+  const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const overlapY = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (overlapX <= 0 || overlapY <= 0) return 0;
+  const areaA = (a.x1 - a.x0) * (a.y1 - a.y0);
+  const areaB = (b.x1 - b.x0) * (b.y1 - b.y0);
+  return (overlapX * overlapY) / Math.max(1, Math.min(areaA, areaB));
+}
+
+// 서로 다른 페이지 분석 모드(PSM)로 같은 이미지를 두 번 인식하면, 한쪽이 놓친 글자를
+// 다른 쪽이 잡아내는 경우가 많다. 같은 위치를 가리키는 결과는 하나로 합친다.
+function mergeOcrWordPasses(wordLists) {
+  const merged = [];
+  for (const words of wordLists) {
+    for (const word of words) {
+      const dup = merged.find(
+        (w) => canonicalChordToken(w.text) === canonicalChordToken(word.text) && bboxOverlapRatio(w.bbox, word.bbox) > 0.4
+      );
+      if (dup) {
+        if ((word.confidence ?? 0) > (dup.confidence ?? 0)) {
+          dup.text = word.text;
+          dup.confidence = word.confidence;
+        }
+        continue;
+      }
+      merged.push(word);
+    }
+  }
+  return merged;
+}
+
+// 오선보 위의 작은 코드 글자는 실제 픽셀 크기가 매우 작은 경우가 많아
+// 인식 전에 확대하면 정확도가 크게 올라간다.
+async function upscaleForOcr(file, minLongSide = 2400) {
+  const bitmap = await createImageBitmap(file);
+  const longSide = Math.max(bitmap.width, bitmap.height);
+  const scale = Math.max(1, minLongSide / longSide);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  return canvas;
 }
 
 recognizeBtn.addEventListener("click", async () => {
@@ -265,13 +402,35 @@ recognizeBtn.addEventListener("click", async () => {
       },
     });
     try {
-      const { data } = await worker.recognize(selectedImageFile);
-      const found = extractChordsFromOcr(data);
+      const prepared = await upscaleForOcr(selectedImageFile);
+
+      // 페이지 분석 모드(PSM)에 따라 잘 잡히는 글자가 다르다 — 오선보 위에 흩어진
+      // 짧은 글자는 "흩어진 텍스트" 모드(11)가 유리하고, 음자리표 옆처럼 다른 그림과
+      // 붙어 있는 글자는 오히려 기본 모드(3)가 더 잘 잡는 경우가 있다. 같은 이미지를
+      // 두 모드로 각각 인식해서 결과를 합친다.
+      setOcrStatus("코드 인식 중… (1/2)");
+      await worker.setParameters({ tessedit_pageseg_mode: "11" });
+      const sparsePass = await worker.recognize(prepared);
+
+      setOcrStatus("코드 인식 중… (2/2)");
+      await worker.setParameters({ tessedit_pageseg_mode: "3" });
+      const defaultPass = await worker.recognize(prepared);
+
+      const mergedWords = mergeOcrWordPasses([sparsePass.data?.words || [], defaultPass.data?.words || []]);
+      const found = extractChordsFromWords(mergedWords);
+      if (ocrDebug) {
+        ocrDebugText.textContent = formatOcrDebugText(mergedWords) || "(인식된 글자가 없습니다)";
+        ocrDebug.hidden = false;
+      }
       if (!found.length) {
         setOcrStatus("코드로 보이는 글자를 찾지 못했습니다. 목록에 직접 추가하거나 아래 직접 입력을 이용해 주세요.", true);
       } else {
         replaceChordsFromTokens(found);
-        setOcrStatus(`코드 ${found.length}개를 인식했습니다. 목록을 확인하고 필요하면 수정해 주세요.`);
+        setOcrStatus(
+          `코드 ${found.length}개를 인식했습니다. 특히 ★표시된 첫 번째 코드는 인식이 자주 틀리니 사진과 비교해 꼭 확인해 주세요.`
+        );
+        firstChordInput.focus();
+        firstChordInput.select();
       }
     } finally {
       await worker.terminate();
